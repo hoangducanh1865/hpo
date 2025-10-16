@@ -1,9 +1,7 @@
 import torch
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
-from src.config import Config 
-
-
+from src.model import SoftmaxRegression,LeNet
 class Utils:
     @staticmethod
     def load_fashion_mnist(batch_size):
@@ -38,3 +36,13 @@ class Utils:
         """Compute number of correct predictions."""
         preds = torch.argmax(y_hat, dim=1)
         return (preds == y).float().sum()
+    @staticmethod
+    def build_model(args):
+        if args.model_name=='softmax':
+            return SoftmaxRegression(num_outputs=args.num_outputs)
+        elif args.model_name=='lenet':
+            model=LeNet(num_classes=args.num_outputs)
+            model.apply_init()
+            return model
+        else:
+            raise NotImplementedError('Model type not supported, use "softmax" or "lenet" instead')
