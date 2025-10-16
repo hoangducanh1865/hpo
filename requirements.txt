@@ -2,3 +2,5 @@ torch
 torchvision
 tqdm
 matplotlib
+# 'syne-tune[extra]'
+# 'syne-tune[aws]'
