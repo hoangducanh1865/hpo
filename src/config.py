@@ -1,14 +1,17 @@
-
-
+import argparse
+import torch
 class Config:
-    # Data
-    batch_size = 256
-    num_workers = 2
-    
-    # Model
-    num_outputs = 10  # 10 classes for Fashion-MNIST
-    
-    # Training
-    lr = 0.1
-    num_epochs = 10
-    device = "cpu" 
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') 
+    @staticmethod
+    def new_parser(name=None):
+        return argparse.ArgumentParser(prog=name)
+    @staticmethod
+    def add_training_argument(parser):
+        parser.add_argument('--train_mode',type=str,default='hpo',choices=['hpo','fixed'])
+        parser.add_argument('--model_name',type=str,default='lenet',choices=['lenet','softmax']) 
+        parser.add_argument('--num_epochs',type=int,default=1) 
+        parser.add_argument('--learning_rate',type=float,default=0.1)
+        parser.add_argument('--batch_size',type=int,default=256)
+        parser.add_argument('--num_workers',type=int,default=2)
+        parser.add_argument('--num_outputs',type=int,default=10)
+        parser.add_argument('--num_trials',type=int,default=10)

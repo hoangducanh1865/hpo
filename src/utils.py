@@ -1,12 +1,12 @@
 import torch
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
-from src.config import Config as config
+from src.config import Config 
 
 
 class Utils:
     @staticmethod
-    def load_fashion_mnist(batch_size=config.batch_size):
+    def load_fashion_mnist(batch_size):
         """Load FashionMNIST dataset with train/validation/test split."""
         transform = transforms.Compose([
             transforms.ToTensor(),
