@@ -1,5 +1,3 @@
-# trainer.py
-
 import torch
 from tqdm import tqdm
 from src.utils import accuracy

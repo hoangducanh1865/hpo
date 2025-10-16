@@ -11,4 +11,4 @@ class Config:
     # Training
     lr = 0.1
     num_epochs = 10
-    device = "cuda" 
+    device = "cpu" 
