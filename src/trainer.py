@@ -3,6 +3,7 @@ from tqdm import tqdm
 from src.utils import accuracy
 from src.config import Config
 
+
 class Trainer:
     def __init__(self, model, train_loader, test_loader, lr=Config.lr, num_epochs=Config.num_epochs):
         self.model = model.to(Config.device)
