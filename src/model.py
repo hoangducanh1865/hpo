@@ -1,6 +1,7 @@
 import torch
-from torch import nn
 import torch.nn.functional as F
+from torch import nn
+
 
 class SoftmaxRegression(nn.Module):
     """Softmax Regression (Multinomial Logistic Regression) model."""
