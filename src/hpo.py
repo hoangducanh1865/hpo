@@ -1,3 +1,4 @@
+import numpy as np
 import time
 import torch
 import matplotlib.pyplot as plt
@@ -6,6 +7,7 @@ from scipy import stats
 from src.model import SoftmaxRegression, LeNet
 from src.trainer import Trainer
 from src.utils import Utils
+from collections import defaultdict
 from abc import ABC, abstractmethod
 from syne_tune import Reporter
 from syne_tune import StoppingCriterion, Tuner
@@ -139,6 +141,31 @@ class HPO:
         return best_config, best_score, tuner
 
     @staticmethod
+    def multi_fidelity_random_search(args, config_space, initial_config):
+        min_number_of_epochs = 2
+        max_number_of_epochs = 10
+        eta = 2
+        seacher = RandomSearcher(config_space, initial_config)
+        scheduler = MultiFidelitycheduler(
+            searcher=seacher,
+            eta=eta,
+            r_min=min_number_of_epochs,
+            r_max=max_number_of_epochs,
+        )
+        objective_fn = HPO.hpo_objective_fn(args)
+        tuner = HPOTuner(scheduler=scheduler, objective_fn=objective_fn)
+        print(f"Starting HPO with {args.num_trials} trials")
+        tuner.run(number_of_trials=args.num_trials)
+        best_config, best_score = tuner.get_best_config()
+        print("\n" + "=" * 32)
+        print(f"Multi-Fidelity HPO Summary:")
+        print(f"Best config: {best_config}")
+        print(f"Best validation error: {best_score:.4f}")
+        print(f"Total runtime: {tuner.current_runtime:.2f}s")
+        print(f"Average time per trial: {tuner.current_runtime/30:.2f}s")
+        return best_config, best_score, tuner
+
+    @staticmethod
     def plot_hpo_progress(tuner, save_path=None):
         """Plot HPO progress over time"""
 
@@ -259,3 +286,73 @@ class BasicScheduler(HPOScheduler):
         """Update searcher with trial results"""
         # @TODO: for now, method update does not do anything, maybe implement exploiting past observations here
         self.searcher.update(config, error, additional_info=info)
+
+
+class MultiFidelitycheduler(HPOScheduler):
+    def __init__(self, searcher, eta, r_min, r_max, prefact=1):
+        self.searcher = searcher
+        self.eta = eta
+        self.r_min = r_min
+        self.r_max = r_max
+        self.prefact = prefact  # @QUESTION
+        self.K = int(
+            np.log(r_max / r_min) / np.log(eta)
+        )  # Compute K, which is later used to determine the number of configurations
+        self.rung_levels = [
+            r_min * (eta**k) for k in range(self.K + 1)
+        ]  # Define the rungs
+        if r_max not in self.rung_levels:
+            self.rung_levels.append(r_max)  # The final rung should be r_max
+            self.K += 1
+        # Bookkeeping
+        self.observed_error_at_rungs = defaultdict(list)
+        self.all_observed_error_at_rungs = defaultdict(list)
+        self.queue = []  # Processing queue
+
+    def suggest(self):
+        if len(self.queue) == 0:
+            # Start a new round of successive halving
+            # Number of configurations for the first rung:
+            n0 = int(self.prefact * self.eta**self.K)
+            for _ in range(n0):
+                config = self.searcher.sample_config()
+                config["num_epochs"] = self.r_min  # Set r = r_min
+                self.queue.append(config)
+        # Return an element from the queue
+        return self.queue.pop()
+
+    def update(self, config: dict, error: float, info=None):
+        ri = int(config["num_epochs"])  # Rung r_i
+        # Update our searcher, e.g if we use Bayesian optimization later
+        self.searcher.update(config, error, additional_info=info)
+        self.all_observed_error_at_rungs[ri].append((config, error))
+        if ri < self.r_max:
+            # Bookkeeping
+            self.observed_error_at_rungs[ri].append((config, error))
+            # Determine how many configurations should be evaluated on this rung
+            ki = self.K - self.rung_levels.index(ri)
+            ni = int(self.prefact * (self.eta**ki))
+            # If we observed all configuration on this rung r_i, we estimate the
+            # top 1 / eta configuration, add them to queue and promote them for
+            # the next rung r_{i+1}
+            if len(self.observed_error_at_rungs[ri]) >= ni:
+                kiplus1 = ki - 1
+                niplus1 = int(self.prefact * (self.eta**kiplus1))
+                best_performing_configurations = self.get_top_n_configurations(
+                    rung_level=ri, n=niplus1
+                )
+                riplus1 = self.rung_levels[self.K - kiplus1]  # r_{i+1}
+                # Queue may not be empty: insert new entries at the beginning
+                self.queue = [
+                    dict(config, num_epochs=riplus1)
+                    for config in best_performing_configurations
+                ] + self.queue
+                self.observed_error_at_rungs[ri] = []  # Reset
+
+    def get_top_n_configurations(self, rung_level, n):
+        """Configurations are sorted based on their observed performance on the current rung"""
+        rung = self.observed_error_at_rungs[rung_level]
+        if not rung:
+            return []
+        sorted_rung = sorted(rung, key=lambda x: x[1])
+        return [x[0] for x in sorted_rung[:n]]

@@ -15,7 +15,7 @@ class Config:
             "--train_mode",
             type=str,
             default="async_hpo",
-            choices=["hpo", "fixed", "async_hpo"],
+            choices=["hpo", "fixed", "async_hpo", "multi_fidelity_hpo"],
         )
         parser.add_argument(
             "--model_name", type=str, default="lenet", choices=["lenet", "softmax"]
@@ -26,4 +26,4 @@ class Config:
         parser.add_argument("--num_workers", type=int, default=2)
         parser.add_argument("--num_outputs", type=int, default=10)
         parser.add_argument("--num_trials", type=int, default=10)
-        parser.add_argument("--max_wallclock_time", type=int, default=60 * 60)
+        parser.add_argument("--max_wallclock_time", type=int, default=10 * 60)
