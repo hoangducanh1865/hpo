@@ -72,12 +72,12 @@ def train_with_async_hpo(args):
         "model_name": args.model_name,
         "num_outputs": args.num_outputs,
     }
-    initial_config = {
+    '''initial_config = {
         "learning_rate": args.learning_rate,
         "batch_size": args.batch_size,
-    }
+    }'''
     best_config, best_score, tuner = HPO.async_random_search(
-        args, config_space=config_space, initial_config=initial_config
+        args, config_space=config_space
     )
     print(f"Training with best config: {best_config}")
     train_loader, val_loader, test_loader = Utils.load_fashion_mnist(

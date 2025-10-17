@@ -119,7 +119,7 @@ class HPO:
         return best_config, best_score, tuner  # @QUESTION: why return tuner?
 
     @staticmethod
-    def async_random_search(args, config_space, initial_config):
+    def async_random_search(args, config_space):
         trial_backend = PythonBackend(
             tune_function=HPO.async_hpo_objective_fn, config_space=config_space
         )
@@ -133,8 +133,9 @@ class HPO:
             print_update_interval=int(args.max_wallclock_time * 0.6),  # @QUESTION
         )
         tuner.run()
-        best_config = tuner.best_config()
-        best_score = best_config["val_err"]  # @QUESTION
+        trial_id, best_config = tuner.best_config(metric="val_err")
+        best_result = tuner.trial_backend._trial_dict[trial_id].result
+        best_score = best_result["val_err"]
         return best_config, best_score, tuner
 
     @staticmethod
