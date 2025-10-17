@@ -6,5 +6,9 @@ PYTHONPATH=. python main.py \
   --batch_size 256 \
   --num_workers 2 \
   --num_outputs 10 \
-  --num_trials 20 \
-  --max_wallclock_time 600
+  --num_trials 30 \
+  --max_wallclock_time 600 \
+  --eta 2 \
+  --min_number_of_epochs 10 \
+  --max_number_of_epochs 50 \
+  --prefact 1 

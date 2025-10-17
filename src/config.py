@@ -27,3 +27,7 @@ class Config:
         parser.add_argument("--num_outputs", type=int, default=10)
         parser.add_argument("--num_trials", type=int, default=10)
         parser.add_argument("--max_wallclock_time", type=int, default=10 * 60)
+        parser.add_argument("--eta", type=int, default=2)
+        parser.add_argument("--min_number_of_epochs", type=int, default=10)
+        parser.add_argument("--max_number_of_epochs", type=int, default=50)
+        parser.add_argument("--prefact", type=int, default=1)

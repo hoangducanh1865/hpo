@@ -142,15 +142,13 @@ class HPO:
 
     @staticmethod
     def multi_fidelity_random_search(args, config_space, initial_config):
-        min_number_of_epochs = 2
-        max_number_of_epochs = 10
-        eta = 2
         seacher = RandomSearcher(config_space, initial_config)
         scheduler = MultiFidelitycheduler(
             searcher=seacher,
-            eta=eta,
-            r_min=min_number_of_epochs,
-            r_max=max_number_of_epochs,
+            eta=args.eta,
+            r_min=args.min_number_of_epochs,
+            r_max=args.max_number_of_epochs,
+            prefact=args.prefact,
         )
         objective_fn = HPO.hpo_objective_fn(args)
         tuner = HPOTuner(scheduler=scheduler, objective_fn=objective_fn)
@@ -289,7 +287,7 @@ class BasicScheduler(HPOScheduler):
 
 
 class MultiFidelitycheduler(HPOScheduler):
-    def __init__(self, searcher, eta, r_min, r_max, prefact=1):
+    def __init__(self, searcher, eta, r_min, r_max, prefact):
         self.searcher = searcher
         self.eta = eta
         self.r_min = r_min
