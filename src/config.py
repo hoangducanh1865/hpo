@@ -14,8 +14,8 @@ class Config:
         parser.add_argument(
             "--train_mode",
             type=str,
-            default="async_hpo",
-            choices=["hpo", "fixed", "async_hpo", "multi_fidelity_hpo"],
+            default="asha_hpo",
+            choices=["hpo", "fixed", "async_hpo", "multi_fidelity_hpo", "asha_hpo"],
         )
         parser.add_argument(
             "--model_name", type=str, default="lenet", choices=["lenet", "softmax"]

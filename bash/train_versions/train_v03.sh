@@ -1,0 +1,14 @@
+PYTHONPATH=. python main.py \
+  --train_mode asha_hpo \
+  --model_name lenet \
+  --num_epochs 100 \
+  --learning_rate 0.1 \
+  --batch_size 256 \
+  --num_workers 2 \
+  --num_outputs 10 \
+  --num_trials 50 \
+  --max_wallclock_time 600 \
+  --eta 2 \
+  --min_number_of_epochs 10 \
+  --max_number_of_epochs 100 \
+  --prefact 1 

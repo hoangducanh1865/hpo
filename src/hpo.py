@@ -44,7 +44,7 @@ class HPO:
                 val_loader,
                 test_loader,
                 lr=lr,
-                num_epochs=args.num_epochs,
+                num_epochs=config.get("num_epochs", args.num_epochs),
             )
             trainer.fit()
             val_err = trainer.validation_error()
@@ -161,6 +161,49 @@ class HPO:
         print(f"Best validation error: {best_score:.4f}")
         print(f"Total runtime: {tuner.current_runtime:.2f}s")
         print(f"Average time per trial: {tuner.current_runtime/30:.2f}s")
+        return best_config, best_score, tuner
+    
+    @staticmethod
+    def asha_random_search(args, config_space, initial_config):
+        """
+        Asynchronous Successive Halving Algorithm (ASHA)
+        
+        Uses HPOTuner with ASHAScheduler for asynchronous multi-fidelity optimization.
+        Workers don't wait for synchronization, leading to better resource utilization.
+        """
+        searcher = RandomSearcher(config_space, initial_config)
+        scheduler = ASHAScheduler(
+            searcher=searcher,
+            eta=args.eta,
+            r_min=args.min_number_of_epochs,
+            r_max=args.max_number_of_epochs,
+            prefact=args.prefact,
+        )
+        objective_fn = HPO.hpo_objective_fn(args)
+        tuner = HPOTuner(scheduler=scheduler, objective_fn=objective_fn)
+        
+        print(f"Starting ASHA with {args.num_trials} trials")
+        print(f"Rung levels: {scheduler.rung_levels}")
+        print(f"eta={args.eta}, r_min={args.min_number_of_epochs}, r_max={args.max_number_of_epochs}")
+        
+        tuner.run(number_of_trials=args.num_trials)
+        best_config, best_score = tuner.get_best_config()
+        
+        # Print rung statistics
+        print("\n" + "=" * 50)
+        print("ASHA Rung Statistics:")
+        for rung in scheduler.rung_levels:
+            n_completed = len(scheduler.completed_trials_at_rungs[rung])
+            n_promoted = len(scheduler.promoted_configs[rung])
+            print(f"  Rung {rung:3d}: {n_completed:3d} completed, {n_promoted:3d} promoted")
+        
+        print("\n" + "=" * 50)
+        print(f"ASHA HPO Summary:")
+        print(f"Best config: {best_config}")
+        print(f"Best validation error: {best_score:.4f}")
+        print(f"Total runtime: {tuner.current_runtime:.2f}s")
+        print(f"Average time per trial: {tuner.current_runtime/args.num_trials:.2f}s")
+        
         return best_config, best_score, tuner
 
     @staticmethod
@@ -354,3 +397,96 @@ class MultiFidelitycheduler(HPOScheduler):
             return []
         sorted_rung = sorted(rung, key=lambda x: x[1])
         return [x[0] for x in sorted_rung[:n]]
+
+
+class ASHAScheduler(HPOScheduler):
+    """
+    Asynchronous Successive Halving Algorithm (ASHA)
+    
+    Key differences from synchronous SH:
+    - Promotes configs as soon as enough results are available (not all)
+    - No synchronization barriers, workers stay busy
+    - Checks rungs from top to bottom for promotion opportunities
+    """
+    def __init__(self, searcher, eta, r_min, r_max, prefact=1):
+        self.searcher = searcher
+        self.eta = eta
+        self.r_min = r_min
+        self.r_max = r_max
+        self.prefact = prefact
+        
+        # Compute rung levels
+        self.K = int(np.log(r_max / r_min) / np.log(eta))
+        self.rung_levels = [r_min * (eta**k) for k in range(self.K + 1)]
+        if r_max not in self.rung_levels:
+            self.rung_levels.append(r_max)
+            self.K += 1
+        
+        # Track completed trials at each rung
+        self.completed_trials_at_rungs = defaultdict(list)  # (config, error) pairs
+        
+        # Track which configs have been promoted from each rung
+        self.promoted_configs = defaultdict(set)  # rung -> set of config hashes
+        
+        # Track number of configs started at each rung
+        self.configs_started_at_rung = defaultdict(int)
+    
+    def _config_hash(self, config):
+        """Create hashable representation of config (excluding num_epochs)"""
+        items = [(k, v) for k, v in sorted(config.items()) if k != 'num_epochs']
+        return tuple(items)
+    
+    def suggest(self):
+        """
+        ASHA suggest logic:
+        1. Check rungs from top to bottom for promotion opportunities
+        2. If found, promote a config to next rung
+        3. Otherwise, start new config at r_min
+        """
+        # Check rungs from highest to lowest (excluding r_max)
+        for i in range(len(self.rung_levels) - 2, -1, -1):
+            rung = self.rung_levels[i]
+            next_rung = self.rung_levels[i + 1]
+            
+            # Number of configs that should be started at this rung
+            ki = self.K - i
+            ni = int(self.prefact * (self.eta ** ki))
+            
+            # Check if we have enough completed trials to consider promotion
+            completed = self.completed_trials_at_rungs[rung]
+            
+            if len(completed) >= self.eta:  # Need at least eta completed trials
+                # Get top 1/eta configs that haven't been promoted yet
+                sorted_trials = sorted(completed, key=lambda x: x[1])  # Sort by error
+                
+                for config, error in sorted_trials:
+                    config_hash = self._config_hash(config)
+                    
+                    # If this config hasn't been promoted from this rung yet
+                    if config_hash not in self.promoted_configs[rung]:
+                        # Check if we should promote (top 1/eta fraction)
+                        top_k = max(1, len(completed) // self.eta)
+                        top_configs = [self._config_hash(c) for c, _ in sorted_trials[:top_k]]
+                        
+                        if config_hash in top_configs:
+                            # Promote this config
+                            self.promoted_configs[rung].add(config_hash)
+                            promoted_config = dict(config)
+                            promoted_config['num_epochs'] = next_rung
+                            return promoted_config
+        
+        # No promotion opportunity found, start new config at r_min
+        new_config = self.searcher.sample_config()
+        new_config['num_epochs'] = self.r_min
+        self.configs_started_at_rung[self.r_min] += 1
+        return new_config
+    
+    def update(self, config: dict, error: float, info=None):
+        """Record completed trial"""
+        ri = int(config['num_epochs'])
+        
+        # Update searcher
+        self.searcher.update(config, error, additional_info=info)
+        
+        # Record this completion
+        self.completed_trials_at_rungs[ri].append((config, error))
