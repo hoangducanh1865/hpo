@@ -15,10 +15,10 @@ class Config:
             "--train_mode",
             type=str,
             default="asha_hpo",
-            choices=["hpo", "fixed", "async_hpo", "multi_fidelity_hpo", "asha_hpo"],
+            choices=["hpo", "fixed", "async_hpo", "multi_fidelity_hpo", "asha_hpo", "bayesian_hpo"],
         )
         parser.add_argument(
-            "--model_name", type=str, default="lenet", choices=["lenet", "softmax"]
+            "--model_name", type=str, default="lenet", choices=["lenet", "softmax",'svm','sgd']
         )
         parser.add_argument("--num_epochs", type=int, default=1)
         parser.add_argument("--learning_rate", type=float, default=0.1)
@@ -31,3 +31,7 @@ class Config:
         parser.add_argument("--min_number_of_epochs", type=int, default=10)
         parser.add_argument("--max_number_of_epochs", type=int, default=50)
         parser.add_argument("--prefact", type=int, default=1)
+        parser.add_argument('--alpha',type=float,default=0.0001)
+        parser.add_argument('--l1_ratio',type=float,default=0.15)
+        parser.add_argument('--C',type=float,default=1.0)
+        parser.add_argument('--gamma',type=float,default=0.001)

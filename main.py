@@ -178,6 +178,47 @@ def train_with_asha_hpo(args):
     HPO.plot_hpo_progress(tuner, save_path="hpo_progress.png")
 
 
+def train_with_bayesian_hpo(args):
+    """Train using Bayesian Optimization with Gaussian Process"""
+    config_space = {
+        "learning_rate": stats.loguniform(1e-4, 1),
+        "batch_size": stats.randint(35, 512),
+    }
+    initial_config = {
+        "learning_rate": args.learning_rate,
+        "batch_size": args.batch_size,
+    }
+
+    best_config, best_score, tuner = HPO.bayesian_search(
+        args, config_space=config_space, initial_config=initial_config
+    )
+
+    print(f"\nTraining final model with best config: {best_config}")
+    train_loader, val_loader, test_loader = Utils.load_fashion_mnist(
+        best_config["batch_size"]
+    )
+    model = Utils.build_model(args)
+    trainer = Trainer(
+        model,
+        train_loader,
+        val_loader,
+        test_loader,
+        lr=best_config["learning_rate"],
+        num_epochs=args.num_epochs,
+    )
+    trainer.fit()
+
+    train_acc = trainer.evaluate_train()
+    val_acc = 1.0 - trainer.validation_error()
+    test_acc = trainer.evaluate_test()
+
+    print(f"Final train accuracy with Bayesian-tuned hyperparameters: {train_acc:.4f}")
+    print(f"Final validation accuracy with Bayesian-tuned hyperparameters: {val_acc:.4f}")
+    print(f"Final test accuracy with Bayesian-tuned hyperparameters: {test_acc:.4f}")
+
+    HPO.plot_hpo_progress(tuner, save_path="hpo_progress.png")
+
+
 def main():
     parser = Config.new_parser()
     Config.add_training_argument(parser)
@@ -190,6 +231,8 @@ def main():
         train_with_multi_fidelity_hpo(args)
     elif args.train_mode == "asha_hpo":
         train_with_asha_hpo(args)
+    elif args.train_mode == "bayesian_hpo":
+        train_with_bayesian_hpo(args)
     else:
         train_fixed(args)
 

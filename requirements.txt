@@ -2,5 +2,8 @@ torch
 torchvision
 tqdm
 matplotlib
+scipy
+numpy
+scikit-learn
 # 'syne-tune[extra]'
 # 'syne-tune[aws]'

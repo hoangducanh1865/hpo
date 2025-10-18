@@ -1,7 +1,7 @@
 import torch
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
-from src.model import SoftmaxRegression, LeNet
+from src.model import SoftmaxRegression, LeNet,SGDClassifier,SVMClassifier
 
 
 class Utils:
@@ -51,6 +51,10 @@ class Utils:
             model = LeNet(num_classes=args.num_outputs)
             model.apply_init()
             return model
+        elif args.model_name=='sgd':
+            return SGDClassifier(alpha=args.alpha,l1_ratio=args.l1_ratio)
+        elif args.model_name=='svm':
+            return SVMClassifier(C=args.C,gamma=args.gamma)
         else:
             raise NotImplementedError(
                 'Model type not supported, use "softmax" or "lenet" instead'

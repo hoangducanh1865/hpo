@@ -3,7 +3,9 @@ import time
 import torch
 import matplotlib.pyplot as plt
 import sys, os
+import numpy as np
 from scipy import stats
+from scipy.optimize import minimize
 from src.model import SoftmaxRegression, LeNet
 from src.trainer import Trainer
 from src.utils import Utils
@@ -14,6 +16,8 @@ from syne_tune import StoppingCriterion, Tuner
 from syne_tune.backend import PythonBackend
 from syne_tune.config_space import loguniform, randint
 from syne_tune.optimizer.baselines import RandomSearch
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import Matern
 
 # sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -207,6 +211,27 @@ class HPO:
         return best_config, best_score, tuner
 
     @staticmethod
+    def bayesian_search(args, config_space, initial_config, n_random_init=5):
+        """Bayesian Optimization using Gaussian Process + Expected Improvement"""
+        searcher = BayesianSearcher(config_space, initial_config, n_random_init=n_random_init)
+        scheduler = BasicScheduler(searcher)
+        objective_fn = HPO.hpo_objective_fn(args)
+        tuner = HPOTuner(scheduler=scheduler, objective_fn=objective_fn)
+        # Run HPO
+        print(f"Starting Bayesian HPO with {args.num_trials} trials")
+        print(f"Random initialization: {n_random_init} trials")
+        tuner.run(number_of_trials=args.num_trials)
+        best_config, best_score = tuner.get_best_config()
+        # Summary results
+        print("\n" + "=" * 50)
+        print(f"Bayesian HPO Summary:")
+        print(f"Best config: {best_config}")
+        print(f"Best validation error: {best_score:.4f}")
+        print(f"Total runtime: {tuner.current_runtime:.2f}s")
+        print(f"Average time per trial: {tuner.current_runtime/args.num_trials:.2f}s")
+        return best_config, best_score, tuner
+
+    @staticmethod
     def plot_hpo_progress(tuner, save_path=None):
         """Plot HPO progress over time"""
 
@@ -308,11 +333,122 @@ class RandomSearcher(HPOSeacher):
     def sample_config(self) -> dict:
         """Sample randoom configuration from config space"""
         if self.initial_config is not None:
-            result = self.initial_config
-            self.initial_config = None  # Clear after first use
-            return result
+            config = self.initial_config
+            self.initial_config = None
+            return config
         random_config = {key: domain.rvs() for key, domain in self.config_space.items()}
         return random_config
+
+
+class BayesianSearcher(HPOSeacher):
+    """Bayesian Optimization searcher using GP + Expected Improvement"""
+    def __init__(self, config_space: dict, initial_config: dict, n_random_init=5):
+        self.config_space = config_space
+        self.initial_config = initial_config
+        self.n_random_init = n_random_init
+        self.trial_count = 0
+        
+        # Track observations: X (configs as arrays), y (errors)
+        self.X_observed = []
+        self.y_observed = []
+        
+        # Build bounds for each hyperparameter
+        self.param_names = list(config_space.keys())
+        self.bounds = []
+        for key in self.param_names:
+            domain = config_space[key]
+            self.bounds.append((domain.a, domain.b)) # domain.a is lower bound, domain.b is upper bound
+    
+    def sample_config(self) -> dict:
+        """Sample next configuration using BO or random initialization"""
+        self.trial_count += 1
+        
+        # Use initial config first
+        if self.initial_config is not None:
+            config = self.initial_config
+            self.initial_config = None
+            return config
+        
+        # Random initialization phase
+        if self.trial_count <= self.n_random_init:
+            return {key: domain.rvs() for key, domain in self.config_space.items()}
+        
+        # Bayesian optimization phase
+        if len(self.X_observed) < 2:
+            # Fallback to random if not enough observations
+            return {key: domain.rvs() for key, domain in self.config_space.items()}
+        
+        # Fit GP and optimize acquisition function
+        try:
+            X = np.array(self.X_observed)
+            y = np.array(self.y_observed)
+            
+            # Fit GP
+            kernel = Matern(nu=2.5)
+            gp = GaussianProcessRegressor(kernel=kernel, alpha=1e-6, normalize_y=True, n_restarts_optimizer=5)
+            gp.fit(X, y)
+            
+            # Optimize Expected Improvement
+            next_x = self.optimize_acquisition(gp, y.min())
+            
+            # Convert array back to config dict
+            config = {name: float(next_x[i]) for i, name in enumerate(self.param_names)}
+            
+            # Handle integer parameters (like batch_size)
+            for key, domain in self.config_space.items():
+                if isinstance(domain, stats._distn_infrastructure.rv_discrete_frozen):
+                    config[key] = int(round(config[key]))
+            
+            return config
+        except Exception as e:
+            print(f"BO failed ({e}), falling back to random sampling")
+            return {key: domain.rvs() for key, domain in self.config_space.items()}
+    
+    def update(self, config: dict, error: float, additional_info=None):
+        """Record observation for GP fitting"""
+        # Convert config to array (in consistent order)
+        x = np.array([config[name] for name in self.param_names])
+        self.X_observed.append(x)
+        self.y_observed.append(error)
+    
+    def optimize_acquisition(self, gp, y_min, n_restarts=25):
+        """Optimize Expected Improvement acquisition function"""
+        best_x = None
+        best_acquisition_value = -np.inf
+        
+        # Multi-start optimization
+        for _ in range(n_restarts):
+            # Random starting point
+            x0 = np.array([np.random.uniform(low, high) for low, high in self.bounds])
+            
+            # Minimize negative EI
+            result = minimize(
+                fun=lambda x: -self.expected_improvement(x, gp, y_min),
+                x0=x0,
+                bounds=self.bounds,
+                method='L-BFGS-B'
+            )
+            
+            if result.success and -result.fun > best_acquisition_value:
+                best_acquisition_value = -result.fun
+                best_x = result.x
+        
+        return best_x if best_x is not None else x0
+    
+    def expected_improvement(self, x, gp, y_min, xi=0.01):
+        """Expected Improvement acquisition function"""
+        x = x.reshape(1, -1)
+        mu, sigma = gp.predict(x, return_std=True)
+        mu = mu[0]
+        sigma = sigma[0]
+        
+        if sigma == 0:
+            return 0.0
+        
+        # EI formula
+        z = (y_min - mu - xi) / sigma
+        ei = (y_min - mu - xi) * stats.norm.cdf(z) + sigma * stats.norm.pdf(z)
+        return ei
 
 
 class BasicScheduler(HPOScheduler):
