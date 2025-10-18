@@ -175,7 +175,7 @@ def train_with_asha_hpo(args):
     print(f"Final validation accuracy with ASHA-tuned hyperparameters: {val_acc:.4f}")
     print(f"Final test accuracy with ASHA-tuned hyperparameters: {test_acc:.4f}")
 
-    HPO.plot_hpo_progress(tuner, save_path="asha_hpo_progress.png")
+    HPO.plot_hpo_progress(tuner, save_path="hpo_progress.png")
 
 
 def main():
