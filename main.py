@@ -4,14 +4,14 @@ from src.trainer import Trainer
 from src.config import Config
 from src.hpo import HPO
 from scipy import stats
-from syne_tune.config_space import loguniform, randint
+from syne_tune.config_space import loguniform, randint,uniform
 
 
 def train_fixed(args):
     fixed_config = {"learning_rate": args.learning_rate, "batch_size": args.batch_size}
     print(f"Training with fixed config: {fixed_config}")
     train_loader, val_loader, test_loader = Utils.load_fashion_mnist(args.batch_size)
-    model = Utils.build_model(args)
+    model = Utils.build_model(args,fixed_config)
     trainer = Trainer(
         model,
         train_loader,
@@ -45,7 +45,7 @@ def train_with_hpo(args):
     train_loader, val_loader, test_loader = Utils.load_fashion_mnist(
         best_config["batch_size"]
     )
-    model = Utils.build_model(args)
+    model = Utils.build_model(args,best_config)
     trainer = Trainer(
         model,
         train_loader,
@@ -83,7 +83,7 @@ def train_with_async_hpo(args):
     train_loader, val_loader, test_loader = Utils.load_fashion_mnist(
         best_config["batch_size"]
     )
-    model = Utils.build_model(args)
+    model = Utils.build_model(args,best_config)
     trainer = Trainer(
         model,
         train_loader,
@@ -118,7 +118,7 @@ def train_with_multi_fidelity_hpo(args):
     train_loader, val_loader, test_loader = Utils.load_fashion_mnist(
         best_config["batch_size"]
     )
-    model = Utils.build_model(args)
+    model = Utils.build_model(args,best_config)
     trainer = Trainer(
         model,
         train_loader,
@@ -156,7 +156,7 @@ def train_with_asha_hpo(args):
     train_loader, val_loader, test_loader = Utils.load_fashion_mnist(
         best_config["batch_size"]
     )
-    model = Utils.build_model(args)
+    model = Utils.build_model(args,best_config)
     trainer = Trainer(
         model,
         train_loader,
@@ -180,14 +180,41 @@ def train_with_asha_hpo(args):
 
 def train_with_bayesian_hpo(args):
     """Train using Bayesian Optimization with Gaussian Process"""
-    config_space = {
-        "learning_rate": stats.loguniform(1e-4, 1),
-        "batch_size": stats.randint(35, 512),
-    }
-    initial_config = {
-        "learning_rate": args.learning_rate,
-        "batch_size": args.batch_size,
-    }
+    if args.model_name=='sgd':
+        config_space = {
+            "learning_rate": stats.loguniform(1e-4, 1),
+            "batch_size": stats.randint(35, 512),
+            'alpha':stats.loguniform(1e-6,1e-1), # Use stats.loguniform instead of loguniform since in Bayesian Seacher, we use domain.a and domain.b, which is a characteristic of scipy.stats, not syne_tune
+            'l1_ratio':stats.uniform(0,1) 
+        }
+        initial_config = {
+            "learning_rate": args.learning_rate,
+            "batch_size": args.batch_size,
+            'alpha':args.alpha,
+            'l1_ratio':args.l1_ratio 
+        }
+    elif args.model_name=='svm':
+        config_space = {
+            "learning_rate": stats.loguniform(1e-4, 1),
+            "batch_size": stats.randint(35, 512),
+            'C':stats.loguniform(1e-2,1e2),
+            'gamma':stats.loguniform(1e-6,1e-1)
+        }
+        initial_config = {
+            "learning_rate": args.learning_rate,
+            "batch_size": args.batch_size,
+            'C':args.C,
+            'gamma':args.gamma
+        }
+    else:
+        config_space = {
+            "learning_rate": stats.loguniform(1e-4, 1),
+            "batch_size": stats.randint(35, 512),
+        }
+        initial_config = {
+            "learning_rate": args.learning_rate,
+            "batch_size": args.batch_size,
+        }
 
     best_config, best_score, tuner = HPO.bayesian_search(
         args, config_space=config_space, initial_config=initial_config
@@ -197,7 +224,7 @@ def train_with_bayesian_hpo(args):
     train_loader, val_loader, test_loader = Utils.load_fashion_mnist(
         best_config["batch_size"]
     )
-    model = Utils.build_model(args)
+    model = Utils.build_model(args,best_config)
     trainer = Trainer(
         model,
         train_loader,

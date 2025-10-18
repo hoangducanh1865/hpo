@@ -44,7 +44,7 @@ class Utils:
         return (preds == y).float().sum()
 
     @staticmethod
-    def build_model(args):
+    def build_model(args,config=None):
         if args.model_name == "softmax":
             return SoftmaxRegression(num_outputs=args.num_outputs)
         elif args.model_name == "lenet":
@@ -52,9 +52,9 @@ class Utils:
             model.apply_init()
             return model
         elif args.model_name=='sgd':
-            return SGDClassifier(alpha=args.alpha,l1_ratio=args.l1_ratio)
+            return SGDClassifier(alpha=args.alpha,l1_ratio=args.l1_ratio) if config is None else SGDClassifier(alpha=config.get('alpha',args.alpha),l1_ratio=config.get('l1_ratio',args.l1_ratio))
         elif args.model_name=='svm':
-            return SVMClassifier(C=args.C,gamma=args.gamma)
+            return SVMClassifier(C=args.C,gamma=args.gamma) if config is None else SVMClassifier(C=config.get('C',args.C),gamma=config.get('gamma',args.gamma))
         else:
             raise NotImplementedError(
                 'Model type not supported, use "softmax" or "lenet" instead'

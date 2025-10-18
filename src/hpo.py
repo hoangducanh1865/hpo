@@ -41,7 +41,7 @@ class HPO:
             lr = config.get("learning_rate", args.learning_rate)
             batch_size = config.get("batch_size", args.batch_size)
             train_loader, val_loader, test_loader = Utils.load_fashion_mnist(batch_size)
-            model = Utils.build_model(args)
+            model = Utils.build_model(args,config)
             trainer = Trainer(
                 model,
                 train_loader,
